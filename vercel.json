@@ -1,4 +1,15 @@
 {
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" }
+  ],
+  "functions": {
+    "api/search-grants.js": {
+      "maxDuration": 60
+    },
+    "api/notify.js": {
+      "maxDuration": 30
+    }
+  },
   "crons": [
     {
       "path": "/api/search-grants",
