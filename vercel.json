@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "api/search-grants.js": { "maxDuration": 60 },
+    "api/notify.js": { "maxDuration": 30 },
+    "api/approve-opportunity.js": { "maxDuration": 30 },
+    "api/weekly-summary.js": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/search-grants", "schedule": "0 13 * * *" },
+    { "path": "/api/weekly-summary", "schedule": "0 14 * * 0" }
+  ]
+}

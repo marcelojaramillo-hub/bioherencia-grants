@@ -1,0 +1,578 @@
+import { useState, useEffect, useCallback } from "react";
+
+// ============================================================
+// SUPABASE CONNECTION
+// ============================================================
+const SB_URL = "https://tphrglqgzvlwpacurbmu.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwaHJnbHFnenZsd3BhY3VyYm11Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxODc0NDYsImV4cCI6MjA5MTc2MzQ0Nn0.oWAe4dJesxU4m3Oj1nklOotUt2OGjfuxgeq44j8zcxs";
+const HEADERS = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" };
+
+async function sbGet(table, query = "") {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${table}?${query}`, { headers: HEADERS });
+    return r.ok ? await r.json() : [];
+  } catch { return []; }
+}
+
+async function sbPatch(table, id, data) {
+  try {
+    await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
+      method: "PATCH", headers: { ...HEADERS, Prefer: "return=minimal" }, body: JSON.stringify(data)
+    });
+  } catch (e) { console.error("Patch error:", e); }
+}
+
+// ============================================================
+// STATIC FALLBACK DATA (EMPTY - only Supabase)
+// ============================================================
+const FALLBACK_APPS = [];
+
+const DEFAULT_KPIS = { meta_total: 550, servicios_eco: 250, grants_int: 0, proyectos_nac: 0, donaciones: 0 };
+
+// ============================================================
+// CONSTANTS & HELPERS
+// ============================================================
+const STATES = ["Preseleccionada", "En preparación", "Enviada", "En evaluación", "Aprobada", "Rechazada"];
+const ST_BG = { "Preseleccionada": "#0c4a6e", "En preparación": "#854d0e", "Enviada": "#6b21a8", "En evaluación": "#4338ca", "Aprobada": "#166534", "Rechazada": "#7f1d1d" };
+const ST_TX = { "Preseleccionada": "#7dd3fc", "En preparación": "#fbbf24", "Enviada": "#c4b5fd", "En evaluación": "#a5b4fc", "Aprobada": "#4ade80", "Rechazada": "#fca5a5" };
+const PRI = { URGENTE: "#ef4444", ALTA: "#f97316" };
+const ENTITIES = ["Bioherencia (COL)", "Biolegacy (USA 501c3)", "Ambas", "Por definir"];
+const WEIGHT_LABELS = { 1: "Ligera", 2: "Media", 3: "Pesada" };
+const WEIGHT_COLORS = { 1: "#334155", 2: "#854d0e", 3: "#7f1d1d" };
+
+const TODAY = new Date().toISOString().split('T')[0];
+const daysBetween = (d) => d ? Math.ceil((new Date(d) - new Date(TODAY)) / 86400000) : null;
+
+function genBriefing(app) {
+  return {
+    funder_desc: app.tooltip || `Funder: ${app.funder}. Verificar información en sitio web.`,
+    que_financia: `${app.amount}. Área: ${app.area || 'Por definir'}. ${app.language ? `Idioma: ${app.language}.` : ''}`,
+    quien_puede: app.requisitos || "Verificar requisitos de elegibilidad en el sitio del funder.",
+    idioma: app.language || "Por verificar",
+    ciclo: app.deadline ? `Deadline: ${app.deadline}` : "Rolling / permanente — verificar en sitio web.",
+    encaje_bh: `Score: ${(app.score||0).toFixed(2)}. ${(app.score||0) >= 4 ? 'ENCAJE ALTO.' : (app.score||0) >= 3.5 ? 'Encaje medio-alto.' : 'Encaje moderado.'}`,
+    que_preparar: app.tasks ? app.tasks.filter(t => !t.isGate).map((t,i) => `${i+1}) ${t.title}`).join('\n') : "Verificar requisitos.",
+    riesgos: app.language === "Inglés" ? "Requiere redacción sólida en inglés." : "Verificar elegibilidad.",
+    tip_experto: (app.score||0) >= 4 ? "Score alto — priorizar." : "Score moderado — evaluar costo-beneficio.",
+    score: app.score || 0,
+    entidad_recomendada: app.entity || "Por definir",
+  };
+}
+
+// ============================================================
+// UI COMPONENTS
+// ============================================================
+function Tip({ text, children }) {
+  const [s, setS] = useState(false);
+  return (
+    <span style={{ position: "relative" }} onClick={e => { e.stopPropagation(); setS(!s); }} onMouseLeave={() => setS(false)}>
+      {children}
+      {s && <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 6, width: "min(300px,85vw)", padding: 12, background: "#1e293b", color: "#e2e8f0", borderRadius: 10, fontSize: 13, lineHeight: 1.6, zIndex: 1000, boxShadow: "0 16px 40px rgba(0,0,0,.6)", border: "1px solid #334155" }}>
+        <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: "#94a3b8", marginBottom: 4 }}>ⓘ Info</div>{text}
+      </div>}
+    </span>
+  );
+}
+
+function EK({ label, value, onChange, color, suffix = "", sub, editable = true }) {
+  const [ed, setEd] = useState(false);
+  const [tmp, setTmp] = useState(String(value));
+  return (
+    <div style={{ flex: "1 1 45%", minWidth: 0, background: "#0f172a", borderRadius: 10, padding: "10px 8px", border: "1px solid #1e293b", textAlign: "center" }}>
+      <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+      {ed && editable ? <input value={tmp} onChange={e => setTmp(e.target.value)} autoFocus type="number" onBlur={() => { onChange(Number(tmp)||0); setEd(false); }} onKeyDown={e => { if(e.key==="Enter"){onChange(Number(tmp)||0);setEd(false);}}} style={{ width: "80%", background: "#1e293b", border: "1px solid #3b82f6", borderRadius: 6, color: "#fff", fontSize: 18, fontWeight: 800, textAlign: "center", padding: 2, outline: "none" }} />
+      : <div onClick={() => editable && setEd(true)} style={{ fontSize: 20, fontWeight: 800, color: color||"#e2e8f0", cursor: editable?"pointer":"default" }}>{typeof value==='number'?value.toLocaleString():value}{suffix}</div>}
+      {sub && <div style={{ fontSize: 9, color: "#334155" }}>{sub}</div>}
+    </div>
+  );
+}
+
+function Ind({ label, value, sub, color }) {
+  return <div style={{ flex: "1 1 30%", minWidth: 85, background: "#0f172a", borderRadius: 8, padding: "8px 6px", border: "1px solid #1e293b", textAlign: "center" }}>
+    <div style={{ fontSize: 8, color: "#64748b", textTransform: "uppercase" }}>{label}</div>
+    <div style={{ fontSize: 16, fontWeight: 800, color: color||"#e2e8f0" }}>{value}</div>
+    {sub && <div style={{ fontSize: 8, color: "#475569" }}>{sub}</div>}
+  </div>;
+}
+
+function LB({ href, label, color }) { 
+  if(!href) return null; 
+  return <a href={href} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", gap: 3, padding: "5px 9px", borderRadius: 7, background: color||"#1e3a5f", color: "#93c5fd", fontSize: 11, fontWeight: 600, textDecoration: "none", border: "1px solid #2563eb33" }}>{label} ↗</a>; 
+}
+
+function WeightedBar({ tasks, done }) {
+  const totalW = tasks.reduce((s,t) => s + (t.weight||1), 0);
+  const doneW = tasks.reduce((s,t,i) => s + (done[i] ? (t.weight||1) : 0), 0);
+  const pct = totalW > 0 ? Math.round((doneW / totalW) * 100) : 0;
+  const clr = pct >= 80 ? "#22c55e" : pct >= 50 ? "#eab308" : pct > 0 ? "#3b82f6" : "#334155";
+  const doneCt = done.filter(Boolean).length;
+  const overdue = tasks.filter((t,i) => !done[i] && t.due && daysBetween(t.due) < 0).length;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ flex: 1, height: 8, background: "#1e293b", borderRadius: 4, overflow: "hidden", display: "flex" }}>
+          {tasks.map((t, i) => {
+            const w = ((t.weight||1) / totalW) * 100;
+            return <div key={i} style={{ width: `${w}%`, height: "100%", background: done[i] ? clr : "transparent", borderRight: i < tasks.length-1 ? "1px solid #0f172a" : "none", transition: "background .3s" }} />;
+          })}
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 700, color: clr, minWidth: 35, textAlign: "right" }}>{pct}%</span>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 3, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 9, color: "#475569" }}>{doneCt}/{tasks.length} pasos</span>
+        <span style={{ fontSize: 9, color: "#475569" }}>{doneW}/{totalW} esfuerzo</span>
+        {overdue > 0 && <span style={{ fontSize: 9, color: "#ef4444", fontWeight: 600 }}>⚠ {overdue} vencida{overdue > 1 ? "s" : ""}</span>}
+      </div>
+    </div>
+  );
+}
+
+function TaskItem({ task, done, onToggle, funderName }) {
+  const [showA, setShowA] = useState(false);
+  const [assignee, setAssignee] = useState(task.assignee || "");
+  const [notified, setNotified] = useState(false);
+  const d = daysBetween(task.due);
+  const overdue = d !== null && d < 0 && !done;
+  const TEAM = ["Chelo", "Marcela", "Juanca", "Luis"];
+  const assignTo = async (name) => {
+    setAssignee(name); setShowA(false);
+    if (name) {
+      try {
+        await fetch("/api/notify", { method: "POST", headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ type: "task_assigned", data: { assignee: name, task_title: task.title, funder: funderName, deadline: task.due, app_url: "https://bioherencia-grants.vercel.app" }})
+        });
+        setNotified(true); setTimeout(() => setNotified(false), 3000);
+      } catch(e) { console.log("Notify error:", e); }
+    }
+  };
+  return (
+    <div style={{ padding: "5px 0", borderBottom: "1px solid #1e293b", background: overdue ? "#1a0a0a" : task.isGate ? "#0a1a1a" : "transparent", borderLeft: task.isGate ? "3px solid #0d9488" : "none", paddingLeft: task.isGate ? 8 : 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, opacity: done ? 0.4 : 1 }}>
+        <input type="checkbox" checked={done} onChange={onToggle} style={{ accentColor: task.isGate ? "#0d9488" : "#3b82f6", width: 15, height: 15, flexShrink: 0 }} />
+        <span style={{ flex: 1, fontSize: 12, textDecoration: done ? "line-through" : "none", color: done ? "#475569" : task.isGate ? "#5eead4" : "#cbd5e1", fontWeight: task.isGate ? 600 : 400 }}>{task.title}</span>
+        <span style={{ fontSize: 9, padding: "1px 4px", borderRadius: 3, background: WEIGHT_COLORS[task.weight||1], color: "#94a3b8", flexShrink: 0 }}>{WEIGHT_LABELS[task.weight||1]}</span>
+        {task.due && <span style={{ fontSize: 10, color: overdue ? "#ef4444" : (d!==null&&d<=7) ? "#f97316" : "#64748b", fontWeight: overdue||(d!==null&&d<=7) ? 600 : 400, flexShrink: 0 }}>
+          {overdue ? `${Math.abs(d)}d⚠` : (d!==null&&d<=7) ? `${d}d⏰` : new Date(task.due).toLocaleDateString('es',{month:'short',day:'numeric'})}
+        </span>}
+        <button onClick={e=>{e.stopPropagation();setShowA(!showA);}} style={{ background: assignee?"#1e3a5f":"#1e293b", border: "1px solid #334155", borderRadius: 5, color: assignee?"#60a5fa":"#64748b", fontSize: 10, padding: "1px 5px", cursor: "pointer", flexShrink: 0 }}>{notified?"✓📧":assignee?`👤${assignee}`:"👤+"}</button>
+      </div>
+      {showA && <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4, marginLeft: 22 }}>
+        {TEAM.map(name => <button key={name} onClick={()=>assignTo(name)} style={{ background: assignee===name?"#1e3a5f":"#1e293b", border: "1px solid #334155", borderRadius: 5, color: assignee===name?"#60a5fa":"#94a3b8", fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>{name}</button>)}
+        <button onClick={()=>assignTo("")} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 5, color: "#ef4444", fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>✗</button>
+      </div>}
+    </div>
+  );
+}
+
+function BriefingPanel({ app, onClose }) {
+  const b = genBriefing(app);
+  const ss = { marginBottom: 14 };
+  const ls = { fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 };
+  const ts = { fontSize: 13, color: "#cbd5e1", lineHeight: 1.6, whiteSpace: "pre-line" };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000cc", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#0f172a", borderRadius: 14, border: "1px solid #1e293b", padding: 20, width: "min(480px,95vw)", maxHeight: "90vh", overflow: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+          <div><div style={{ fontSize: 18, fontWeight: 700, color: "#f1f5f9" }}>📄 Briefing</div><div style={{ fontSize: 14, color: "#3b82f6", fontWeight: 600 }}>{app.funder}</div></div>
+          <div style={{ background: b.score>=4?"#052e16":"#1a1a0a", borderRadius: 8, padding: "6px 12px", border: `1px solid ${b.score>=4?'#166534':'#854d0e'}` }}>
+            <div style={{ fontSize: 9, color: "#64748b" }}>Score</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: b.score>=4?"#4ade80":"#eab308" }}>{b.score.toFixed(2)}</div>
+          </div>
+        </div>
+        <div style={ss}><div style={ls}>¿Quién es este funder?</div><div style={ts}>{b.funder_desc}</div></div>
+        <div style={ss}><div style={ls}>¿Qué financia?</div><div style={ts}>{b.que_financia}</div></div>
+        <div style={ss}><div style={ls}>Idioma y formato</div><div style={ts}>{b.idioma}</div></div>
+        <div style={ss}><div style={ls}>Ciclo / deadline</div><div style={ts}>{b.ciclo}</div></div>
+        <div style={{ ...ss, background: "#052e16", borderRadius: 8, padding: 12, border: "1px solid #166534" }}><div style={{ ...ls, color: "#4ade80" }}>Encaje con Bioherencia</div><div style={ts}>{b.encaje_bh}</div></div>
+        <div style={{ ...ss, background: "#1e1b4b", borderRadius: 8, padding: 12, border: "1px solid #4338ca" }}><div style={{ ...ls, color: "#a5b4fc" }}>¿Qué hay que preparar?</div><div style={ts}>{b.que_preparar}</div></div>
+        <div style={ss}><div style={ls}>Riesgos</div><div style={{ ...ts, color: "#fca5a5" }}>{b.riesgos}</div></div>
+        <div style={{ ...ss, background: "#0a1628", borderRadius: 8, padding: 12, border: "1px solid #1e3a5f" }}><div style={{ ...ls, color: "#60a5fa" }}>💡 Tip de experto</div><div style={ts}>{b.tip_experto}</div></div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+          <LB href={app.url_apply} label="Aplicar aquí" color="#1e3a5f" />
+          <LB href={app.url_info} label="Requisitos" color="#1e293b" />
+          <LB href={app.url_funder} label="Sitio funder" color="#1e293b" />
+        </div>
+        <button onClick={onClose} style={{ marginTop: 12, width: "100%", background: "#1e293b", border: "1px solid #334155", borderRadius: 8, color: "#94a3b8", fontSize: 13, padding: "10px", cursor: "pointer" }}>Cerrar briefing</button>
+      </div>
+    </div>
+  );
+}
+
+function AppCard({ app, tasksDone, onToggleTask, onChangeStatus, onChangeEntity, onApply }) {
+  const [exp, setExp] = useState(false);
+  const [showSt, setShowSt] = useState(false);
+  const [showEnt, setShowEnt] = useState(false);
+  const [showBriefing, setShowBriefing] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const dl = daysBetween(app.deadline);
+  const entity = app.entity || "Por definir";
+  const overdueTasks = app.tasks.filter((t,i) => !tasksDone[i] && t.due && daysBetween(t.due) < 0).length;
+
+  const handleApply = async () => {
+    setApplying(true);
+    await onApply(app);
+    setApplying(false);
+  };
+
+  return (
+    <div style={{ background: "#0f172a", borderRadius: 12, border: `1px solid ${overdueTasks>0?'#ef444466':dl!==null&&dl<=7?'#ef4444':'#1e293b'}`, overflow: "hidden" }}>
+      {dl!==null && dl<=7 && <div style={{ background: "#7f1d1d", padding: "3px 12px", fontSize: 11, color: "#fca5a5", fontWeight: 600 }}>⚠️ Menos de 7 días para cierre ({dl}d)</div>}
+      {overdueTasks>0 && <div style={{ background: "#431407", padding: "3px 12px", fontSize: 11, color: "#fb923c", fontWeight: 600 }}>⏰ {overdueTasks} tarea{overdueTasks>1?"s":""} vencida{overdueTasks>1?"s":""}</div>}
+      <div style={{ padding: "14px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 6, alignItems: "center" }}>
+          <span style={{ background: PRI[app.priority]||"#6b7280", color: "#fff", padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700 }}>{app.priority}</span>
+          <div style={{ position: "relative" }}>
+            <button onClick={e=>{e.stopPropagation();setShowSt(!showSt);}} style={{ background: ST_BG[app.status]||"#1e293b", color: ST_TX[app.status]||"#94a3b8", padding: "2px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600, border: "1px dashed "+(ST_TX[app.status]||"#64748b")+"44", cursor: "pointer" }}>{app.status} ▾</button>
+            {showSt && <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, overflow: "hidden", zIndex: 100, minWidth: 150 }}>
+              {STATES.map(st => <div key={st} onClick={e=>{e.stopPropagation();onChangeStatus(st);setShowSt(false);}} style={{ padding: "7px 12px", fontSize: 12, color: ST_TX[st], cursor: "pointer", borderBottom: "1px solid #334155" }} onMouseEnter={e=>e.target.style.background=ST_BG[st]} onMouseLeave={e=>e.target.style.background="transparent"}>{st}{app.status===st?" ✓":""}</div>)}
+            </div>}
+          </div>
+          <div style={{ position: "relative" }}>
+            <button onClick={e=>{e.stopPropagation();setShowEnt(!showEnt);}} style={{ background: "#1e293b", color: entity.includes("Biolegacy")?"#a78bfa":entity.includes("Ambas")?"#fbbf24":"#94a3b8", padding: "2px 6px", borderRadius: 5, fontSize: 10, border: "1px solid #334155", cursor: "pointer" }}>{entity.includes("Bioherencia")?"🇨🇴":entity.includes("Biolegacy")?"🇺🇸":"🌐"} {entity.split(" ")[0]} ▾</button>
+            {showEnt && <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, overflow: "hidden", zIndex: 100, minWidth: 180 }}>
+              {ENTITIES.map(ent => <div key={ent} onClick={e=>{e.stopPropagation();onChangeEntity(ent);setShowEnt(false);}} style={{ padding: "7px 12px", fontSize: 11, color: "#e2e8f0", cursor: "pointer", borderBottom: "1px solid #334155" }} onMouseEnter={e=>e.target.style.background="#334155"} onMouseLeave={e=>e.target.style.background="transparent"}>{ent}</div>)}
+            </div>}
+          </div>
+          <span style={{ fontSize: 10, color: "#64748b" }}>{app.language}</span>
+        </div>
+        <Tip text={app.tooltip||""}><div style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9", marginBottom: 2 }}>{app.funder} <span style={{ color: "#3b82f6", fontSize: 12 }}>ⓘ</span></div></Tip>
+        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>{app.project}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
+          <div style={{ background: "#1e293b", borderRadius: 7, padding: "5px 10px" }}><div style={{ fontSize: 9, color: "#64748b" }}>Monto</div><div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>{app.amount}</div></div>
+          <div style={{ background: "#1e293b", borderRadius: 7, padding: "5px 10px" }}><div style={{ fontSize: 9, color: "#64748b" }}>Deadline</div><div style={{ fontSize: 14, fontWeight: 700, color: dl!==null?(dl<=14?"#ef4444":dl<=30?"#f97316":"#22c55e"):"#22c55e" }}>{dl!==null?`${dl} días`:"Rolling"}</div></div>
+          <div style={{ background: (app.score||0)>=4?"#052e16":"#1a1a0a", borderRadius: 7, padding: "5px 10px", border: `1px solid ${(app.score||0)>=4?'#166534':'#854d0e'}` }}><div style={{ fontSize: 9, color: "#64748b" }}>Score</div><div style={{ fontSize: 14, fontWeight: 700, color: (app.score||0)>=4?"#4ade80":"#eab308" }}>{(app.score||0).toFixed(2)}</div></div>
+        </div>
+        <WeightedBar tasks={app.tasks} done={tasksDone} />
+        <div style={{ padding: "7px 10px", background: "#1e293b", borderRadius: 7, fontSize: 12, color: "#93c5fd", marginTop: 6 }}>→ {app.next_step}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
+          {app.status === "Preseleccionada" && <button onClick={handleApply} disabled={applying} style={{ padding: "5px 9px", borderRadius: 7, background: "#059669", color: "#fff", fontSize: 11, fontWeight: 600, border: "none", cursor: applying?"wait":"pointer", opacity: applying?0.6:1 }}>🚀 {applying?"Moviendo...":"Pasar a Aplicación"}</button>}
+          <button onClick={()=>setShowBriefing(true)} style={{ padding: "5px 9px", borderRadius: 7, background: "#1e3a5f", color: "#93c5fd", fontSize: 11, fontWeight: 600, border: "1px solid #2563eb33", cursor: "pointer" }}>📄 Briefing</button>
+          <LB href={app.url_apply} label="Aplicar" color="#1e3a5f" />
+          <LB href={app.url_funder} label="Funder" color="#1e293b" />
+        </div>
+        {showBriefing && <BriefingPanel app={app} onClose={()=>setShowBriefing(false)} />}
+        <div onClick={()=>setExp(!exp)} style={{ fontSize: 10, color: "#475569", cursor: "pointer", marginTop: 6 }}>{exp?"▲ Ocultar":"▼ Tareas"}</div>
+      </div>
+      {exp && <div style={{ padding: "0 14px 12px", borderTop: "1px solid #1e293b" }}>
+        <div style={{ fontSize: 10, color: "#64748b", marginTop: 8, marginBottom: 2 }}>Ligera (1pt) · Media (2pt) · Pesada (3pt) · ⚑ = bloqueante</div>
+        {app.tasks.map((t,i) => <TaskItem key={t.id||i} task={t} done={tasksDone[i]} onToggle={()=>onToggleTask(i)} funderName={app.funder} />)}
+        {app.portal_opens && <div style={{ marginTop: 6, padding: "6px 10px", background: "#1e1a0a", borderRadius: 7, border: "1px solid #854d0e", fontSize: 11, color: "#fbbf24" }}>⚠️ Portal abre {app.portal_opens}</div>}
+      </div>}
+    </div>
+  );
+}
+
+function DetectedCard({ item, onApprove, onDiscard }) {
+  const [approving, setApproving] = useState(false);
+  const dl = daysBetween(item.deadline);
+  
+  const handleApprove = async () => {
+    setApproving(true);
+    await onApprove(item);
+  };
+
+  return (
+    <div style={{ background: "#0f172a", borderRadius: 10, border: `1px solid ${dl!==null&&dl<=7?'#ef4444':'#1e293b'}`, padding: 14, marginBottom: 8 }}>
+      {dl!==null && dl<=7 && <div style={{ background: "#7f1d1d", padding: "2px 8px", fontSize: 10, color: "#fca5a5", fontWeight: 600, borderRadius: 4, marginBottom: 6 }}>⚠️ {dl} días para cierre</div>}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>{item.titulo}</div>
+          <div style={{ fontSize: 12, color: "#94a3b8" }}>{item.funder_nombre}</div>
+        </div>
+        <div style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
+          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: item.entidad_sugerida?.includes("USA")?"#1e1b4b":"#052e16", color: item.entidad_sugerida?.includes("USA")?"#a5b4fc":"#4ade80", fontWeight: 600 }}>{item.entidad_sugerida || "?"}</span>
+          {item.relevancia_score && <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: item.relevancia_score>=70?"#052e16":"#1a1a0a", color: item.relevancia_score>=70?"#4ade80":"#eab308", fontWeight: 700 }}>{item.relevancia_score}%</span>}
+        </div>
+      </div>
+      {item.descripcion && <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>{item.descripcion}</div>}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+        {item.monto_estimado && <span style={{ fontSize: 11, color: "#e2e8f0", background: "#1e293b", padding: "2px 8px", borderRadius: 5 }}>💰 {item.monto_estimado}</span>}
+        {item.deadline && <span style={{ fontSize: 11, color: "#fbbf24", background: "#1e293b", padding: "2px 8px", borderRadius: 5 }}>📅 {item.deadline}</span>}
+        <span style={{ fontSize: 11, color: "#64748b", background: "#1e293b", padding: "2px 8px", borderRadius: 5 }}>📡 {item.fuente}</span>
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={handleApprove} disabled={approving} style={{ flex: 1, background: "#059669", border: "none", borderRadius: 7, color: "#fff", fontSize: 12, fontWeight: 600, padding: "8px", cursor: approving?"wait":"pointer", opacity: approving?0.6:1 }}>✓ {approving?"Aprobando...":"Aprobar → Pipeline"}</button>
+        <button onClick={()=>onDiscard(item)} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 7, color: "#94a3b8", fontSize: 12, padding: "8px", cursor: "pointer" }}>✗ Descartar</button>
+        {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ background: "#1e3a5f", border: "none", borderRadius: 7, color: "#93c5fd", fontSize: 12, padding: "8px 12px", textDecoration: "none" }}>↗</a>}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// MAIN APP
+// ============================================================
+export default function App() {
+  const [tab, setTab] = useState("dash");
+  const [kpis, setKpis] = useState(DEFAULT_KPIS);
+  const [apps, setApps] = useState([]);
+  const [tasksDone, setTasksDone] = useState([]);
+  const [detected, setDetected] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [dbStatus, setDbStatus] = useState("connecting");
+
+  const saveKpis = useCallback((newKpis) => {
+    setKpis(newKpis);
+    if (dbStatus === "live") {
+      sbPatch("kpis_config", "main", {
+        meta_total: newKpis.meta_total, servicios_eco: newKpis.servicios_eco,
+        grants_int: newKpis.grants_int, proyectos_nac: newKpis.proyectos_nac,
+        donaciones: newKpis.donaciones,
+        updated_at: new Date().toISOString()
+      });
+    }
+  }, [dbStatus]);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const dbApps = await sbGet("aplicaciones", "select=*");
+        const dbTasks = await sbGet("tareas", "select=*");
+        const dbScoring = await sbGet("scoring", "select=*");
+        const dbOpp = await sbGet("oportunidades", "select=*");
+        const dbKpis = await sbGet("kpis_config", "select=*&id=eq.main");
+        const dbDetected = await sbGet("oportunidades_detectadas", "select=*&estado=eq.Por%20verificar&order=fecha_deteccion.desc");
+
+        if (dbApps.length > 0 || dbDetected.length > 0) {
+          if (dbKpis.length > 0) {
+            const k = dbKpis[0];
+            setKpis({ meta_total: k.meta_total||550, servicios_eco: k.servicios_eco||250, grants_int: k.grants_int||0, proyectos_nac: k.proyectos_nac||0, donaciones: k.donaciones||0 });
+          }
+
+          const builtApps = (dbApps || []).map(a => {
+            const appTasks = (dbTasks || []).filter(t => t.aplicacion_id === a.id).map(t => ({
+              id: t.id, title: t.titulo || "Tarea", due: t.fecha_limite,
+              weight: t.peso || 2, type: t.tipo || "General",
+              isGate: (t.titulo || "").includes("⚑") || false
+            }));
+            const opp = (dbOpp || []).find(o => o.id === a.oportunidad_id) || {};
+            const scr = (dbScoring || []).find(s => s.oportunidad_id === a.oportunidad_id) || {};
+            return {
+              id: a.id, funder: a.funder || "Sin nombre",
+              project: a.proyecto || "", amount: a.monto || "Por definir",
+              amountNum: a.monto_usd || 0, priority: a.prioridad || "URGENTE", deadline: a.deadline,
+              language: a.idioma || "Por verificar", score: scr.score || 0,
+              verified: TODAY, next_step: a.estado || "Verificar", status: a.estado || "Preseleccionada",
+              entity: a.entidad || "Por definir", url_apply: a.url_aplicar,
+              url_funder: a.url_funder, url_info: a.url_info,
+              tooltip: a.notas || "Verificar en sitio del funder.",
+              hoursEst: a.horas_est || 24, area: a.area || "Conservación",
+              tasks: appTasks.length > 0 ? appTasks : [{ id: "default", title: "Evaluar elegibilidad", due: "", weight: 2 }]
+            };
+          });
+
+          setApps(builtApps);
+          setTasksDone(builtApps.map(a => a.tasks.map(() => false)));
+          setDetected(dbDetected || []);
+          setDbStatus("live");
+        } else {
+          setApps(FALLBACK_APPS);
+          setTasksDone(FALLBACK_APPS.map(a => a.tasks.map(() => false)));
+          setDetected(dbDetected || []);
+          setDbStatus(dbDetected && dbDetected.length > 0 ? "live" : "fallback");
+        }
+      } catch (e) {
+        console.error("Load error:", e);
+        setApps(FALLBACK_APPS);
+        setTasksDone(FALLBACK_APPS.map(a => a.tasks.map(() => false)));
+        setDbStatus("offline");
+      }
+      setLoading(false);
+    }
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const toggleTask = (ai, ti) => {
+    const n = [...tasksDone]; n[ai] = [...n[ai]]; n[ai][ti] = !n[ai][ti]; setTasksDone(n);
+    const task = apps[ai]?.tasks[ti];
+    if (task?.id && dbStatus === "live") {
+      sbPatch("tareas", task.id, { estado: n[ai][ti] ? "Completada" : "Pendiente" });
+    }
+  };
+
+  const changeSt = (ai, st) => {
+    const n = [...apps]; n[ai] = { ...n[ai], status: st }; setApps(n);
+    if (n[ai].id && dbStatus === "live") sbPatch("aplicaciones", n[ai].id, { estado: st });
+  };
+
+  const changeEnt = (ai, ent) => {
+    const n = [...apps]; n[ai] = { ...n[ai], entity: ent }; setApps(n);
+    if (n[ai].id && dbStatus === "live") sbPatch("aplicaciones", n[ai].id, { entidad: ent });
+  };
+
+  const approveDetected = async (item) => {
+    try {
+      await fetch("/api/approve-opportunity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ opp_id: item.id })
+      });
+      setDetected(prev => prev.filter(d => d.id !== item.id));
+      // Reload apps
+      const dbApps = await sbGet("aplicaciones", "select=*");
+      const dbTasks = await sbGet("tareas", "select=*");
+      const builtApps = (dbApps || []).map(a => {
+        const appTasks = (dbTasks || []).filter(t => t.aplicacion_id === a.id).map(t => ({
+          id: t.id, title: t.titulo || "Tarea", due: t.fecha_limite,
+          weight: t.peso || 2, type: t.tipo || "General",
+          isGate: (t.titulo || "").includes("⚑") || false
+        }));
+        return {
+          id: a.id, funder: a.funder || "Sin nombre", project: a.proyecto || "",
+          amount: a.monto || "Por definir", amountNum: a.monto_usd || 0,
+          priority: a.prioridad || "URGENTE", deadline: a.deadline,
+          language: a.idioma || "Por verificar", score: 0,
+          verified: TODAY, next_step: a.estado || "Verificar", status: a.estado || "Preseleccionada",
+          entity: a.entidad || "Por definir", url_apply: a.url_aplicar,
+          url_funder: a.url_funder, url_info: a.url_info,
+          tooltip: a.notas || "", hoursEst: a.horas_est || 24, area: a.area || "Conservación",
+          tasks: appTasks.length > 0 ? appTasks : [{ id: "default", title: "Evaluar elegibilidad", due: "", weight: 2 }]
+        };
+      });
+      setApps(builtApps);
+      setTasksDone(builtApps.map(a => a.tasks.map(() => false)));
+    } catch (e) { console.log("Approve error:", e); }
+  };
+
+  const discardDetected = async (item) => {
+    try {
+      await sbPatch("oportunidades_detectadas", item.id, { estado: "Descartada" });
+      setDetected(prev => prev.filter(d => d.id !== item.id));
+    } catch (e) { console.log("Discard error:", e); }
+  };
+
+  const total = kpis.servicios_eco + kpis.grants_int + kpis.proyectos_nac + kpis.donaciones;
+  const pct = Math.min(100, Math.round((total / kpis.meta_total) * 100));
+  const faltante = Math.max(0, kpis.meta_total - total);
+  const sent = apps.filter(a => ["Enviada","En evaluación","Aprobada","Rechazada"].includes(a.status)).length;
+  const won = apps.filter(a => a.status === "Aprobada").length;
+  const totalOverdue = apps.reduce((s,a,i) => s + (a.tasks || []).filter((t,j)=>!tasksDone[i]?.[j] && t.due && daysBetween(t.due)<0).length, 0);
+
+  if (loading) return (
+    <div style={{ minHeight: "100vh", background: "#020617", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: 14 }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 28, marginBottom: 8 }}>🔄</div>
+        Conectando con Supabase...
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#020617", color: "#e2e8f0", fontFamily: "-apple-system,'Segoe UI',sans-serif" }}>
+      <div style={{ background: "#0f172a", borderBottom: "1px solid #1e293b", padding: "12px 14px", position: "sticky", top: 0, zIndex: 100 }}>
+        <div style={{ maxWidth: 720, margin: "0 auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 7, background: "linear-gradient(135deg,#059669,#0d9488)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#fff", flexShrink: 0 }}>B</div>
+            <div><div style={{ fontSize: 15, fontWeight: 700 }}>Bioherencia — Oportunidades de Financiamiento</div>
+            <div style={{ fontSize: 10, color: "#64748b" }}>
+              {dbStatus === "live" ? "🟢 Conectado a Supabase" : dbStatus === "fallback" ? "🟡 Datos de respaldo" : "🔴 Sin conexión"} · {TODAY}
+            </div></div>
+          </div>
+          <div style={{ display: "flex", gap: 2, overflow: "auto" }}>
+            {[
+              {id:"dash",l:"Dashboard"},
+              {id:"apps",l:`Aplicaciones (${apps.length})`},
+              {id:"detected",l:`Detectadas${detected.length>0?` (${detected.length})`:""}`},
+              {id:"fin",l:"Financiero"},
+            ].map(t =>
+              <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding: "6px 12px", borderRadius: 7, border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", background: tab===t.id?"#3b82f6":"transparent", color: tab===t.id?"#fff":"#64748b", position: "relative" }}>
+                {t.l}
+                {t.id==="detected"&&detected.length>0&&<span style={{ position: "absolute", top: -2, right: -2, width: 8, height: 8, borderRadius: 4, background: "#ef4444" }} />}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: "14px 14px 50px", maxWidth: 720, margin: "0 auto" }}>
+
+        {tab === "dash" && <div style={{ background: "#0a1628", borderRadius: 10, border: "1px solid #1e3a5f", padding: "10px 14px", marginBottom: 12 }}>
+          <div style={{ fontSize: 10, color: "#60a5fa", fontWeight: 600, marginBottom: 2 }}>v1.0 — Plataforma de Gestión de Grants</div>
+          <div style={{ fontSize: 10, color: "#475569" }}>Bot busca diariamente · Flujo automático Detectadas → Aplicaciones · Informe semanal por email · Notificaciones de deadlines</div>
+        </div>}
+
+        {tab === "dash" && <>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
+            <EK label="Meta Año 1" value={kpis.meta_total} onChange={v=>saveKpis({...kpis,meta_total:v})} color="#3b82f6" suffix="M" />
+            <EK label="Serv. Ecosistémicos" value={kpis.servicios_eco} onChange={v=>saveKpis({...kpis,servicios_eco:v})} color="#22c55e" suffix="M" />
+            <EK label="Grants Int." value={kpis.grants_int} onChange={v=>saveKpis({...kpis,grants_int:v})} color="#f97316" suffix="M" />
+            <EK label="Proy. Nacionales" value={kpis.proyectos_nac} onChange={v=>saveKpis({...kpis,proyectos_nac:v})} color="#8b5cf6" suffix="M" />
+            <EK label="Donaciones" value={kpis.donaciones} onChange={v=>saveKpis({...kpis,donaciones:v})} color="#eab308" suffix="M" />
+          </div>
+          <div style={{ background: "#0f172a", borderRadius: 10, padding: "10px 12px", border: "1px solid #1e293b", marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>{total}M / {kpis.meta_total}M</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: pct>=80?"#22c55e":pct>=50?"#eab308":"#ef4444" }}>{pct}%</span>
+            </div>
+            <div style={{ height: 8, background: "#1e293b", borderRadius: 6, overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 6, width: `${pct}%`, background: "linear-gradient(90deg,#22c55e,#8b5cf6,#f97316)", transition: "width .5s" }} />
+            </div>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
+            <Ind label="Activas" value={apps.filter(a=>!["Rechazada"].includes(a.status)).length} color="#7dd3fc" />
+            <Ind label="Enviadas" value={sent} color={sent>0?"#c4b5fd":"#ef4444"} />
+            <Ind label="Aprobadas" value={won} color={won>0?"#4ade80":"#64748b"} />
+            {totalOverdue>0 && <Ind label="Vencidas" value={totalOverdue} color="#ef4444" sub="⚠" />}
+            {detected.length>0 && <Ind label="Nuevas" value={detected.length} color="#f97316" sub="del bot" />}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Aplicaciones activas</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {apps.length === 0 ? <div style={{ background: "#0f172a", borderRadius: 12, border: "1px solid #1e293b", padding: 20, textAlign: "center" }}>
+              <div style={{ fontSize: 28, marginBottom: 6 }}>📭</div>
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin aplicaciones activas</div>
+              <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>Aprueba oportunidades detectadas para empezar.</div>
+            </div> : apps.map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[i]||[]} onToggleTask={j=>toggleTask(i,j)} onChangeStatus={st=>changeSt(i,st)} onChangeEntity={ent=>changeEnt(i,ent)} onApply={approveDetected} />)}
+          </div>
+        </>}
+
+        {tab === "apps" && <>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Oportunidades ({apps.length})</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {apps.length === 0 ? <div style={{ background: "#0f172a", borderRadius: 12, border: "1px solid #1e293b", padding: 20, textAlign: "center" }}>
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin datos</div>
+            </div> : apps.map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[i]||[]} onToggleTask={j=>toggleTask(i,j)} onChangeStatus={st=>changeSt(i,st)} onChangeEntity={ent=>changeEnt(i,ent)} onApply={approveDetected} />)}
+          </div>
+        </>}
+
+        {tab === "detected" && <>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Oportunidades Detectadas por el Bot</div>
+          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 12 }}>El bot busca automáticamente cada día a las 1:10 PM. Aprueba para mover a aplicaciones o descarta.</div>
+          {detected.length === 0 ? (
+            <div style={{ background: "#0f172a", borderRadius: 12, border: "1px solid #1e293b", padding: 30, textAlign: "center" }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
+              <div style={{ fontSize: 14, color: "#94a3b8" }}>No hay oportunidades nuevas por revisar</div>
+              <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>El bot se ejecuta automáticamente. Las nuevas aparecerán aquí.</div>
+            </div>
+          ) : (
+            <div>{detected.map(d => <DetectedCard key={d.id} item={d} onApprove={approveDetected} onDiscard={discardDetected} />)}</div>
+          )}
+        </>}
+
+        {tab === "fin" && <>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Indicadores Financieros</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 12 }}>
+            <Ind label="Pipeline USD" value={`$${apps.reduce((s,a)=>s+(a.amountNum||0),0).toLocaleString()}`} color="#3b82f6" />
+            <Ind label="Enviadas" value={sent} color={sent>0?"#c4b5fd":"#ef4444"} />
+            <Ind label="Aprobadas" value={won} color={won>0?"#4ade80":"#64748b"} />
+            <Ind label="Detectadas" value={detected.length} color={detected.length>0?"#f97316":"#64748b"} />
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 12 }}>
+            <EK label="Meta Total" value={kpis.meta_total} onChange={v=>saveKpis({...kpis,meta_total:v})} color="#3b82f6" suffix="M" />
+            <EK label="Ejecutado" value={total} onChange={()=>{}} color="#22c55e" suffix="M" editable={false} />
+            <EK label="Faltante" value={faltante} onChange={()=>{}} color="#ef4444" suffix="M" editable={false} />
+          </div>
+          {[{n:"Conservador",g:"2-3 grants",e:"USD 60-100K",o:42,c:"#ef4444"},{n:"Base",g:"4-5 grants",e:"USD 150-250K",o:117,c:"#eab308"},{n:"Optimista",g:"6-8 grants",e:"USD 300-500K",o:240,c:"#22c55e"}].map((s,i) =>
+            <div key={i} style={{ background: "#0f172a", borderRadius: 8, border: "1px solid #1e293b", padding: "10px 12px", marginBottom: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}><div><span style={{ fontSize: 13, fontWeight: 700, color: s.c }}>{s.n}</span> <span style={{ fontSize: 11, color: "#94a3b8" }}>{s.g}</span></div><span style={{ fontSize: 13, fontWeight: 700 }}>Overhead: {s.o}M</span></div>
+              <div style={{ height: 4, background: "#1e293b", borderRadius: 4, marginTop: 5, overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.min(100,faltante>0?(s.o/faltante)*100:100)}%`, background: s.c, borderRadius: 4 }} /></div>
+              <div style={{ fontSize: 10, color: "#475569", marginTop: 2 }}>{s.e}</div>
+            </div>
+          )}
+        </>}
+      </div>
+    </div>
+  );
+}
