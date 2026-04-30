@@ -198,21 +198,14 @@ function BriefingPanel({ app, onClose }) {
   );
 }
 
-function AppCard({ app, tasksDone, onToggleTask, onChangeStatus, onChangeEntity, onApply }) {
+function AppCard({ app, tasksDone, onToggleTask, onChangeStatus, onChangeEntity }) {
   const [exp, setExp] = useState(false);
   const [showSt, setShowSt] = useState(false);
   const [showEnt, setShowEnt] = useState(false);
   const [showBriefing, setShowBriefing] = useState(false);
-  const [applying, setApplying] = useState(false);
   const dl = daysBetween(app.deadline);
   const entity = app.entity || "Por definir";
   const overdueTasks = app.tasks.filter((t,i) => !tasksDone[i] && t.due && daysBetween(t.due) < 0).length;
-
-  const handleApply = async () => {
-    setApplying(true);
-    await onApply(app);
-    setApplying(false);
-  };
 
   return (
     <div style={{ background: "#0f172a", borderRadius: 12, border: `1px solid ${overdueTasks>0?'#ef444466':dl!==null&&dl<=7?'#ef4444':'#1e293b'}`, overflow: "hidden" }}>
@@ -245,7 +238,7 @@ function AppCard({ app, tasksDone, onToggleTask, onChangeStatus, onChangeEntity,
         <WeightedBar tasks={app.tasks} done={tasksDone} />
         <div style={{ padding: "7px 10px", background: "#1e293b", borderRadius: 7, fontSize: 12, color: "#93c5fd", marginTop: 6 }}>→ {app.next_step}</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-          {app.status === "Preseleccionada" && <button onClick={handleApply} disabled={applying} style={{ padding: "5px 9px", borderRadius: 7, background: "#059669", color: "#fff", fontSize: 11, fontWeight: 600, border: "none", cursor: applying?"wait":"pointer", opacity: applying?0.6:1 }}>🚀 {applying?"Moviendo...":"Pasar a Aplicación"}</button>}
+          {app.status === "Preseleccionada" && <button onClick={()=>onChangeStatus("En preparación")} style={{ padding: "5px 9px", borderRadius: 7, background: "#059669", color: "#fff", fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer" }}>🚀 Pasar a Aplicación</button>}
           <button onClick={()=>setShowBriefing(true)} style={{ padding: "5px 9px", borderRadius: 7, background: "#1e3a5f", color: "#93c5fd", fontSize: 11, fontWeight: 600, border: "1px solid #2563eb33", cursor: "pointer" }}>📄 Briefing</button>
           <LB href={app.url_apply} label="Aplicar" color="#1e3a5f" />
           <LB href={app.url_funder} label="Funder" color="#1e293b" />
@@ -524,7 +517,7 @@ export default function App() {
               <div style={{ fontSize: 28, marginBottom: 6 }}>📭</div>
               <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin aplicaciones activas</div>
               <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>Aprueba oportunidades detectadas para empezar.</div>
-            </div> : apps.map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[i]||[]} onToggleTask={j=>toggleTask(i,j)} onChangeStatus={st=>changeSt(i,st)} onChangeEntity={ent=>changeEnt(i,ent)} onApply={approveDetected} />)}
+            </div> : apps.map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[i]||[]} onToggleTask={j=>toggleTask(i,j)} onChangeStatus={st=>changeSt(i,st)} onChangeEntity={ent=>changeEnt(i,ent)} />)}
           </div>
         </>}
 
@@ -533,7 +526,7 @@ export default function App() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {apps.length === 0 ? <div style={{ background: "#0f172a", borderRadius: 12, border: "1px solid #1e293b", padding: 20, textAlign: "center" }}>
               <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin datos</div>
-            </div> : apps.map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[i]||[]} onToggleTask={j=>toggleTask(i,j)} onChangeStatus={st=>changeSt(i,st)} onChangeEntity={ent=>changeEnt(i,ent)} onApply={approveDetected} />)}
+            </div> : apps.map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[i]||[]} onToggleTask={j=>toggleTask(i,j)} onChangeStatus={st=>changeSt(i,st)} onChangeEntity={ent=>changeEnt(i,ent)} />)}
           </div>
         </>}
 
