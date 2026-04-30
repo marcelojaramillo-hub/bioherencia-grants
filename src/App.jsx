@@ -334,7 +334,7 @@ export default function App() {
         const dbKpis = await sbGet("kpis_config", "select=*&id=eq.main");
         const dbDetected = await sbGet("oportunidades_detectadas", "select=*&estado=eq.Por%20verificar&order=fecha_detectada.desc");
 
-        if (dbApps.length > 0 || dbDetected.length > 0) {
+        if (dbApps !== null || dbDetected !== null) {
           if (dbKpis.length > 0) {
             const k = dbKpis[0];
             setKpis({ meta_total: k.meta_total||550, servicios_eco: k.servicios_eco||250, grants_int: k.grants_int||0, proyectos_nac: k.proyectos_nac||0, donaciones: k.donaciones||0 });
