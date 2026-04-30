@@ -370,7 +370,7 @@ export default function App() {
           setApps(FALLBACK_APPS);
           setTasksDone(FALLBACK_APPS.map(a => a.tasks.map(() => false)));
           setDetected(dbDetected || []);
-          setDbStatus(dbDetected && dbDetected.length > 0 ? "live" : live);
+          setDbStatus(dbDetected && dbDetected.length > 0 ? "live" : ¨live¨);
         }
       } catch (e) {
         console.error("Load error:", e);
