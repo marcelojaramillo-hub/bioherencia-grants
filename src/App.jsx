@@ -332,7 +332,7 @@ export default function App() {
         const dbScoring = await sbGet("scoring", "select=*");
         const dbOpp = await sbGet("oportunidades", "select=*");
         const dbKpis = await sbGet("kpis_config", "select=*&id=eq.main");
-        const dbDetected = await sbGet("oportunidades_detectadas", "select=*&estado=eq.Por%20verificar&order=fecha_deteccion.desc");
+        const dbDetected = await sbGet("oportunidades_detectadas", "select=*&estado=eq.Por%20verificar&order=fecha_detectada.desc");
 
         if (dbApps.length > 0 || dbDetected.length > 0) {
           if (dbKpis.length > 0) {
