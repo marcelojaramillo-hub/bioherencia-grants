@@ -46,7 +46,15 @@ export default async function handler(req, res) {
     if (!detected.length) return res.status(404).json({ error: "Opportunity not found" });
     const opp = detected[0];
 
-    // 2. Parse monto safely — field could be "USD 25,000" or "25000" or null
+    // 2. Check for duplicates first
+    const existing = await sbGet("aplicaciones", `proyecto_bh=eq.${encodeURIComponent(opp.titulo || "")}&estado_aplicacion=neq.Archivada`);
+    if (existing.length > 0) {
+      console.log(`⚠️ Duplicado evitado: ${opp.titulo}`);
+      await sbPatch("oportunidades_detectadas", opp_id, { estado: "Aprobada", fecha_revisada: new Date().toISOString() });
+      return res.status(200).json({ status: "exists", message: "Ya existe aplicación activa", application_id: existing[0].id });
+    }
+
+    // 3. Parse monto safely — field could be "USD 25,000" or "25000" or null
     let montoNum = null;
     if (opp.monto_estimado) {
       const parsed = parseFloat(String(opp.monto_estimado).replace(/[^0-9.]/g, ''));
