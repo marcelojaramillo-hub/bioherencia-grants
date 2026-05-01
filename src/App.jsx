@@ -32,9 +32,9 @@ const DEFAULT_KPIS = { meta_total: 550, servicios_eco: 250, grants_int: 0, proye
 // ============================================================
 // CONSTANTS & HELPERS
 // ============================================================
-const STATES = ["Preseleccionada", "En preparación", "Enviada", "En evaluación", "Aprobada", "Rechazada"];
-const ST_BG = { "Preseleccionada": "#0c4a6e", "En preparación": "#854d0e", "Enviada": "#6b21a8", "En evaluación": "#4338ca", "Aprobada": "#166534", "Rechazada": "#7f1d1d" };
-const ST_TX = { "Preseleccionada": "#7dd3fc", "En preparación": "#fbbf24", "Enviada": "#c4b5fd", "En evaluación": "#a5b4fc", "Aprobada": "#4ade80", "Rechazada": "#fca5a5" };
+const STATES = ["Preseleccionada", "En preparación", "Enviada", "En evaluación", "Aprobada", "Rechazada", "Archivada"];
+const ST_BG = { "Preseleccionada": "#0c4a6e", "En preparación": "#854d0e", "Enviada": "#6b21a8", "En evaluación": "#4338ca", "Aprobada": "#166534", "Rechazada": "#7f1d1d", "Archivada": "#1e293b" };
+const ST_TX = { "Preseleccionada": "#7dd3fc", "En preparación": "#fbbf24", "Enviada": "#c4b5fd", "En evaluación": "#a5b4fc", "Aprobada": "#4ade80", "Rechazada": "#fca5a5", "Archivada": "#475569" };
 const PRI = { URGENTE: "#ef4444", ALTA: "#f97316" };
 const ENTITIES = ["Bioherencia (COL)", "Biolegacy (USA 501c3)", "Ambas", "Por definir"];
 const WEIGHT_LABELS = { 1: "Ligera", 2: "Media", 3: "Pesada" };
@@ -242,6 +242,7 @@ function AppCard({ app, tasksDone, onToggleTask, onChangeStatus, onChangeEntity 
           <button onClick={()=>setShowBriefing(true)} style={{ padding: "5px 9px", borderRadius: 7, background: "#1e3a5f", color: "#93c5fd", fontSize: 11, fontWeight: 600, border: "1px solid #2563eb33", cursor: "pointer" }}>📄 Briefing</button>
           <LB href={app.url_apply} label="Aplicar" color="#1e3a5f" />
           <LB href={app.url_funder} label="Funder" color="#1e293b" />
+          <button onClick={e=>{e.stopPropagation();onChangeStatus("Archivada");}} style={{ padding: "5px 9px", borderRadius: 7, background: "#1e293b", color: "#ef4444", fontSize: 11, border: "1px solid #ef444433", cursor: "pointer" }}>🗄 Archivar</button>
         </div>
         {showBriefing && <BriefingPanel app={app} onClose={()=>setShowBriefing(false)} />}
         <div onClick={()=>setExp(!exp)} style={{ fontSize: 10, color: "#475569", cursor: "pointer", marginTop: 6 }}>{exp?"▲ Ocultar":"▼ Tareas"}</div>
@@ -341,10 +342,14 @@ export default function App() {
             }));
             const opp = (dbOpp || []).find(o => o.id === a.oportunidad_id) || {};
             const scr = (dbScoring || []).find(s => s.oportunidad_id === a.oportunidad_id) || {};
+            // Extract funder name from nota_revision if available
+            const funderMatch = (a.nota_revision || "").match(/Funder: ([^.]+)\./);
+            const funderName = funderMatch ? funderMatch[1].trim() : (a.proyecto_bh || "Sin nombre");
             return {
-              id: a.id, funder: opp.nombre_programa || a.proyecto_bh || "Sin nombre",
-              project: a.proyecto_bh || "", amount: a.monto_solicitado ? `${a.moneda_sol||"USD"} ${a.monto_solicitado}` : "Por definir",
-              amountNum: a.monto_esperado_usd || 0, priority: "URGENTE", deadline: a.fecha_limite,
+              id: a.id, funder: funderName,
+              project: a.proyecto_bh || "", 
+              amount: a.monto_solicitado ? `USD ${Number(a.monto_solicitado).toLocaleString()}` : "Por definir",
+              amountNum: a.monto_solicitado || 0, priority: "URGENTE", deadline: a.fecha_limite,
               language: "Por verificar", score: scr.score || 0,
               verified: TODAY, next_step: a.proxima_accion || "Verificar", status: a.estado_aplicacion || "Preseleccionada",
               entity: a.entidad_aplicante || "Por definir", url_apply: a.enlace_propuesta,
@@ -414,9 +419,11 @@ export default function App() {
           isGate: (t.titulo || "").includes("⚑") || false
         }));
         return {
-          id: a.id, funder: a.proyecto_bh || "Sin nombre", project: a.proyecto_bh || "",
-          amount: a.monto_solicitado ? `${a.moneda_sol||"USD"} ${a.monto_solicitado}` : "Por definir",
-          amountNum: a.monto_esperado_usd || 0,
+          id: a.id, 
+          funder: ((a.nota_revision || "").match(/Funder: ([^.]+)\./) || [])[1]?.trim() || a.proyecto_bh || "Sin nombre",
+          project: a.proyecto_bh || "",
+          amount: a.monto_solicitado ? `USD ${Number(a.monto_solicitado).toLocaleString()}` : "Por definir",
+          amountNum: a.monto_solicitado || 0,
           priority: "URGENTE", deadline: a.fecha_limite,
           language: "Por verificar", score: 0,
           verified: TODAY, next_step: a.proxima_accion || "Verificar", status: a.estado_aplicacion || "Preseleccionada",
@@ -514,11 +521,11 @@ export default function App() {
           </div>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Aplicaciones activas</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {apps.length === 0 ? <div style={{ background: "#0f172a", borderRadius: 12, border: "1px solid #1e293b", padding: 20, textAlign: "center" }}>
+            {apps.filter(a => a.status !== "Archivada").length === 0 ? <div style={{ background: "#0f172a", borderRadius: 12, border: "1px solid #1e293b", padding: 20, textAlign: "center" }}>
               <div style={{ fontSize: 28, marginBottom: 6 }}>📭</div>
               <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin aplicaciones activas</div>
               <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>Aprueba oportunidades detectadas para empezar.</div>
-            </div> : apps.map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[i]||[]} onToggleTask={j=>toggleTask(i,j)} onChangeStatus={st=>changeSt(i,st)} onChangeEntity={ent=>changeEnt(i,ent)} />)}
+            </div> : apps.filter(a => a.status !== "Archivada").map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[apps.indexOf(a)]||[]} onToggleTask={j=>toggleTask(apps.indexOf(a),j)} onChangeStatus={st=>changeSt(apps.indexOf(a),st)} onChangeEntity={ent=>changeEnt(apps.indexOf(a),ent)} />)}
           </div>
         </>}
 
