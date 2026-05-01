@@ -7,7 +7,8 @@ export const maxDuration = 30;
 
 async function sbGet(table, query = "") {
   const r = await fetch(`${SB_URL}/rest/v1/${table}?${query}`, { headers: HEADERS });
-  return r.ok ? r.json() : [];
+  if (!r.ok) throw new Error(`GET ${table} failed: ${r.status}`);
+  return r.json();
 }
 
 async function sbInsert(table, data) {
@@ -40,47 +41,74 @@ export default async function handler(req, res) {
     const { opp_id } = req.body;
     if (!opp_id) return res.status(400).json({ error: "opp_id required" });
 
-    // 1. Get the detected opportunity
+    // 1. Get the detected opportunity with ALL fields
     const detected = await sbGet("oportunidades_detectadas", `id=eq.${opp_id}`);
     if (!detected.length) return res.status(404).json({ error: "Opportunity not found" });
     const opp = detected[0];
 
-    // 2. Generate IDs
-    const ts = Date.now().toString().slice(-6);
-    const appId = `BH-A-${ts}`;
+    // 2. Parse monto safely — field could be "USD 25,000" or "25000" or null
+    let montoNum = null;
+    if (opp.monto_estimado) {
+      const parsed = parseFloat(String(opp.monto_estimado).replace(/[^0-9.]/g, ''));
+      if (!isNaN(parsed) && parsed > 0) montoNum = parsed;
+    }
 
-    // 3. Create aplicacion using REAL column names
+    // 3. Generate ID
+    const appId = `BH-A-${Date.now().toString().slice(-6)}`;
+
+    // 4. Store ALL detected data as structured JSON in nota_revision
+    // so App.jsx can read it reliably without regex
+    const detectedData = {
+      funder: opp.funder_nombre || "Sin nombre",
+      titulo: opp.titulo || "Sin título",
+      descripcion: opp.descripcion || "",
+      monto_original: opp.monto_estimado || null,
+      monto_num: montoNum,
+      deadline: opp.deadline || null,
+      idioma: opp.idioma || "Por verificar",
+      entidad: opp.entidad_sugerida || "Por definir",
+      relevancia: opp.relevancia_score || 0,
+      url: opp.url || null,
+      fuente: opp.fuente || null,
+      palabras_clave: opp.palabras_clave || null,
+      fecha_aprobacion: new Date().toISOString()
+    };
+
+    // 5. Insert into aplicaciones with correct column names
     await sbInsert("aplicaciones", {
       id: appId,
       proyecto_bh: opp.titulo || "Sin título",
       entidad_aplicante: opp.entidad_sugerida || "Por definir",
       estado_aplicacion: "Preseleccionada",
-      monto_solicitado: opp.monto_estimado ? parseFloat(String(opp.monto_estimado).replace(/[^0-9.]/g, '')) || null : null,
+      monto_solicitado: montoNum,
       moneda_sol: "USD",
       fecha_limite: opp.deadline || null,
-      proxima_accion: `Revisar convocatoria: ${opp.titulo}`,
+      proxima_accion: `Revisar convocatoria completa: ${opp.funder_nombre || opp.titulo}`,
       horas_estimadas_prep: 24,
-      nota_revision: `Funder: ${opp.funder_nombre}. Relevancia: ${opp.relevancia_score}%. Idioma: ${opp.idioma || "Por verificar"}. URL: ${opp.url || "Sin enlace"}. ${opp.descripcion || ""}`,
       enlace_propuesta: opp.url || null,
+      nota_revision: JSON.stringify(detectedData),
       fecha_creacion: new Date().toISOString(),
       fecha_modificacion: new Date().toISOString()
     });
 
-    // 4. Mark detected opportunity as Aprobada
+    // 6. Mark detected opportunity as Aprobada
     await sbPatch("oportunidades_detectadas", opp_id, {
       estado: "Aprobada",
       fecha_revisada: new Date().toISOString(),
       revisado_por: "Chelo"
     });
 
+    console.log(`✅ Aprobada: ${opp.titulo} → ${appId}`);
     return res.status(200).json({
       status: "ok",
       message: "Oportunidad aprobada y aplicación creada",
-      application_id: appId
+      application_id: appId,
+      funder: opp.funder_nombre,
+      monto: montoNum
     });
 
   } catch (error) {
-    console.error("Error:", error);
+    console.error("❌ Error:", error.message);
     return res.status(500).json({ error: error.message });
   }
 }
