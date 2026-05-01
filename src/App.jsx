@@ -258,6 +258,7 @@ function AppCard({ app, tasksDone, onToggleTask, onChangeStatus, onChangeEntity 
 
 function DetectedCard({ item, onApprove, onDiscard }) {
   const [approving, setApproving] = useState(false);
+  const [showBriefing, setShowBriefing] = useState(false);
   const dl = daysBetween(item.deadline);
   
   const handleApprove = async () => {
@@ -282,13 +283,70 @@ function DetectedCard({ item, onApprove, onDiscard }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
         {item.monto_estimado && <span style={{ fontSize: 11, color: "#e2e8f0", background: "#1e293b", padding: "2px 8px", borderRadius: 5 }}>💰 {item.monto_estimado}</span>}
         {item.deadline && <span style={{ fontSize: 11, color: "#fbbf24", background: "#1e293b", padding: "2px 8px", borderRadius: 5 }}>📅 {item.deadline}</span>}
+        {item.idioma && <span style={{ fontSize: 11, color: "#94a3b8", background: "#1e293b", padding: "2px 8px", borderRadius: 5 }}>🌐 {item.idioma}</span>}
         <span style={{ fontSize: 11, color: "#64748b", background: "#1e293b", padding: "2px 8px", borderRadius: 5 }}>📡 {item.fuente}</span>
       </div>
       <div style={{ display: "flex", gap: 6 }}>
         <button onClick={handleApprove} disabled={approving} style={{ flex: 1, background: "#059669", border: "none", borderRadius: 7, color: "#fff", fontSize: 12, fontWeight: 600, padding: "8px", cursor: approving?"wait":"pointer", opacity: approving?0.6:1 }}>✓ {approving?"Aprobando...":"Aprobar → Pipeline"}</button>
-        <button onClick={()=>onDiscard(item)} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 7, color: "#94a3b8", fontSize: 12, padding: "8px", cursor: "pointer" }}>✗ Descartar</button>
+        <button onClick={()=>setShowBriefing(true)} style={{ background: "#1e3a5f", border: "1px solid #2563eb33", borderRadius: 7, color: "#93c5fd", fontSize: 12, fontWeight: 600, padding: "8px 12px", cursor: "pointer" }}>📄</button>
+        <button onClick={()=>onDiscard(item)} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 7, color: "#94a3b8", fontSize: 12, padding: "8px", cursor: "pointer" }}>✗</button>
         {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ background: "#1e3a5f", border: "none", borderRadius: 7, color: "#93c5fd", fontSize: 12, padding: "8px 12px", textDecoration: "none" }}>↗</a>}
       </div>
+
+      {showBriefing && <div style={{ position: "fixed", inset: 0, background: "#000000cc", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={()=>setShowBriefing(false)}>
+        <div onClick={e=>e.stopPropagation()} style={{ background: "#0f172a", borderRadius: 14, border: "1px solid #1e293b", padding: 20, width: "min(480px,95vw)", maxHeight: "90vh", overflow: "auto" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#f1f5f9" }}>📄 Briefing</div>
+              <div style={{ fontSize: 14, color: "#3b82f6", fontWeight: 600 }}>{item.funder_nombre}</div>
+            </div>
+            <div style={{ background: item.relevancia_score>=70?"#052e16":"#1a1a0a", borderRadius: 8, padding: "6px 12px", border: `1px solid ${item.relevancia_score>=70?'#166534':'#854d0e'}` }}>
+              <div style={{ fontSize: 9, color: "#64748b" }}>Relevancia</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: item.relevancia_score>=70?"#4ade80":"#eab308" }}>{item.relevancia_score}%</div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 3 }}>Convocatoria</div>
+            <div style={{ fontSize: 13, color: "#f1f5f9", fontWeight: 600 }}>{item.titulo}</div>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 3 }}>Descripción</div>
+            <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6 }}>{item.descripcion || "Sin descripción disponible"}</div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <div style={{ background: "#1e293b", borderRadius: 7, padding: "8px 12px", flex: 1 }}>
+              <div style={{ fontSize: 9, color: "#64748b" }}>Monto estimado</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>{item.monto_estimado || "Por verificar"}</div>
+            </div>
+            <div style={{ background: "#1e293b", borderRadius: 7, padding: "8px 12px", flex: 1 }}>
+              <div style={{ fontSize: 9, color: "#64748b" }}>Deadline</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: dl!==null?(dl<=14?"#ef4444":"#22c55e"):"#22c55e" }}>{item.deadline || "Rolling"}</div>
+            </div>
+            <div style={{ background: "#1e293b", borderRadius: 7, padding: "8px 12px", flex: 1 }}>
+              <div style={{ fontSize: 9, color: "#64748b" }}>Idioma</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>{item.idioma || "Por verificar"}</div>
+            </div>
+          </div>
+
+          <div style={{ background: "#052e16", borderRadius: 8, padding: 12, border: "1px solid #166534", marginBottom: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#4ade80", textTransform: "uppercase", marginBottom: 3 }}>Entidad recomendada</div>
+            <div style={{ fontSize: 13, color: "#cbd5e1" }}>{item.entidad_sugerida || "Por definir"} {item.entidad_sugerida?.includes("USA") ? "🇺🇸" : "🇨🇴"}</div>
+          </div>
+
+          {item.palabras_clave && <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 3 }}>Keywords</div>
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>{item.palabras_clave}</div>
+          </div>}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, background: "#1e3a5f", color: "#93c5fd", padding: "10px", borderRadius: 8, textDecoration: "none", fontSize: 12, fontWeight: 600, textAlign: "center" }}>🔗 Ver convocatoria ↗</a>}
+            <button onClick={()=>setShowBriefing(false)} style={{ flex: 1, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, color: "#94a3b8", fontSize: 12, padding: "10px", cursor: "pointer" }}>Cerrar</button>
+          </div>
+        </div>
+      </div>}
     </div>
   );
 }
@@ -340,27 +398,36 @@ export default function App() {
               weight: t.peso || 2, type: t.tipo || "General",
               isGate: (t.titulo || "").includes("⚑") || false
             }));
-            const opp = (dbOpp || []).find(o => o.id === a.oportunidad_id) || {};
-            const scr = (dbScoring || []).find(s => s.oportunidad_id === a.oportunidad_id) || {};
-            const funderMatch = (a.nota_revision || "").match(/Funder: ([^.]+)\./);
-            const funderName = funderMatch ? funderMatch[1].trim() : (a.proyecto_bh || "Sin nombre");
-            const relevanciaMatch = (a.nota_revision || "").match(/Relevancia: (\d+)%/);
-            const scoreVal = relevanciaMatch ? Number(relevanciaMatch[1]) / 25 : 0; // Convert 0-100 to 0-4 scale
-            const idiomaMatch = (a.nota_revision || "").match(/Idioma: ([^.]+)\./);
-            const idiomaVal = idiomaMatch ? idiomaMatch[1].trim() : "Por verificar";
-            const urlMatch = (a.nota_revision || "").match(/URL: ([^\s.]+)/);
-            const urlVal = urlMatch && urlMatch[1] !== "Sin" ? urlMatch[1] : null;
+            // Parse stored JSON from nota_revision (set by approve-opportunity.js)
+            let det = {};
+            try { det = JSON.parse(a.nota_revision || "{}"); } catch(e) { det = {}; }
+            
+            const funder = det.funder || a.proyecto_bh || "Sin nombre";
+            const score = det.relevancia ? det.relevancia / 25 : 0; // 0-100 → 0-4 scale
+            const idioma = det.idioma || "Por verificar";
+            const urlApply = det.url || a.enlace_propuesta || null;
+            const monto = det.monto_num || a.monto_solicitado;
+            const montoStr = monto ? `USD ${Number(monto).toLocaleString()}` : (det.monto_original || "Por definir");
+
             return {
-              id: a.id, funder: funderName,
-              project: a.proyecto_bh || "", 
-              amount: a.monto_solicitado ? `USD ${Number(a.monto_solicitado).toLocaleString()}` : "Por definir",
-              amountNum: a.monto_solicitado || 0, priority: "URGENTE", deadline: a.fecha_limite,
-              language: idiomaVal, score: scoreVal,
-              verified: TODAY, next_step: a.proxima_accion || "Verificar", status: a.estado_aplicacion || "Preseleccionada",
-              entity: a.entidad_aplicante || "Por definir", url_apply: a.enlace_propuesta || urlVal,
-              url_funder: null, url_info: a.enlace_loi,
-              tooltip: a.nota_revision || "Verificar en sitio del funder.",
-              hoursEst: a.horas_estimadas_prep || 24, area: "Conservación",
+              id: a.id, funder,
+              project: a.proyecto_bh || "",
+              amount: montoStr,
+              amountNum: monto || 0,
+              priority: "URGENTE",
+              deadline: a.fecha_limite || det.deadline,
+              language: idioma,
+              score,
+              verified: TODAY,
+              next_step: a.proxima_accion || "Verificar",
+              status: a.estado_aplicacion || "Preseleccionada",
+              entity: a.entidad_aplicante || det.entidad || "Por definir",
+              url_apply: urlApply,
+              url_funder: null,
+              url_info: a.enlace_loi,
+              tooltip: det.descripcion || a.nota_revision || "Verificar en sitio del funder.",
+              hoursEst: a.horas_estimadas_prep || 24,
+              area: "Conservación",
               tasks: appTasks.length > 0 ? appTasks : [{ id: "default", title: "Evaluar elegibilidad", due: "", weight: 2 }]
             };
           });
@@ -423,18 +490,22 @@ export default function App() {
           weight: t.peso || 2, type: t.tipo || "General",
           isGate: (t.titulo || "").includes("⚑") || false
         }));
+        let det2 = {};
+        try { det2 = JSON.parse(a.nota_revision || "{}"); } catch(e) { det2 = {}; }
+        const monto2 = det2.monto_num || a.monto_solicitado;
         return {
           id: a.id, 
-          funder: ((a.nota_revision || "").match(/Funder: ([^.]+)\./) || [])[1]?.trim() || a.proyecto_bh || "Sin nombre",
+          funder: det2.funder || a.proyecto_bh || "Sin nombre",
           project: a.proyecto_bh || "",
-          amount: a.monto_solicitado ? `USD ${Number(a.monto_solicitado).toLocaleString()}` : "Por definir",
-          amountNum: a.monto_solicitado || 0,
-          priority: "URGENTE", deadline: a.fecha_limite,
-          language: "Por verificar", score: 0,
+          amount: monto2 ? `USD ${Number(monto2).toLocaleString()}` : (det2.monto_original || "Por definir"),
+          amountNum: monto2 || 0,
+          priority: "URGENTE", deadline: a.fecha_limite || det2.deadline,
+          language: det2.idioma || "Por verificar", score: det2.relevancia ? det2.relevancia / 25 : 0,
           verified: TODAY, next_step: a.proxima_accion || "Verificar", status: a.estado_aplicacion || "Preseleccionada",
-          entity: a.entidad_aplicante || "Por definir", url_apply: a.enlace_propuesta,
+          entity: a.entidad_aplicante || det2.entidad || "Por definir",
+          url_apply: det2.url || a.enlace_propuesta || null,
           url_funder: null, url_info: a.enlace_loi,
-          tooltip: a.nota_revision || "", hoursEst: a.horas_estimadas_prep || 24, area: "Conservación",
+          tooltip: det2.descripcion || a.nota_revision || "", hoursEst: a.horas_estimadas_prep || 24, area: "Conservación",
           tasks: appTasks.length > 0 ? appTasks : [{ id: "default", title: "Evaluar elegibilidad", due: "", weight: 2 }]
         };
       });
