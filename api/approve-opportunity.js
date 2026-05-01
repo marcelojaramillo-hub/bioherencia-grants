@@ -17,7 +17,11 @@ async function sbInsert(table, data) {
     body: JSON.stringify(data)
   });
   const json = await r.json();
-  if (!r.ok) throw new Error(`Insert ${table} failed: ${JSON.stringify(json)}`);
+  if (!r.ok) {
+    console.error(`INSERT ${table} ERROR:`, JSON.stringify(json));
+    console.error(`INSERT ${table} DATA:`, JSON.stringify(data));
+    throw new Error(`Insert ${table} failed: ${JSON.stringify(json)}`);
+  }
   return json;
 }
 
@@ -56,7 +60,8 @@ export default async function handler(req, res) {
       fecha_limite: opp.deadline || null,
       proxima_accion: `Revisar convocatoria: ${opp.titulo}`,
       horas_estimadas_prep: 24,
-      nota_revision: `Detectada por bot. Funder: ${opp.funder_nombre}. Relevancia: ${opp.relevancia_score}%`,
+      nota_revision: `Funder: ${opp.funder_nombre}. Relevancia: ${opp.relevancia_score}%. Idioma: ${opp.idioma || "Por verificar"}. URL: ${opp.url || "Sin enlace"}. ${opp.descripcion || ""}`,
+      enlace_propuesta: opp.url || null,
       fecha_creacion: new Date().toISOString(),
       fecha_modificacion: new Date().toISOString()
     });
@@ -79,4 +84,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: error.message });
   }
 }
-
