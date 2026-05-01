@@ -50,10 +50,10 @@ function genBriefing(app) {
     quien_puede: app.requisitos || "Verificar requisitos de elegibilidad en el sitio del funder.",
     idioma: app.language || "Por verificar",
     ciclo: app.deadline ? `Deadline: ${app.deadline}` : "Rolling / permanente — verificar en sitio web.",
-    encaje_bh: `Score: ${(app.score||0).toFixed(2)}. ${(app.score||0) >= 4 ? 'ENCAJE ALTO.' : (app.score||0) >= 3.5 ? 'Encaje medio-alto.' : 'Encaje moderado.'}`,
+    encaje_bh: `Score: ${(app.score||0)}%. ${(app.score||0) >= 70 ? 'ENCAJE ALTO.' : (app.score||0) >= 50 ? 'Encaje medio-alto.' : 'Encaje moderado.'}`,
     que_preparar: app.tasks ? app.tasks.filter(t => !t.isGate).map((t,i) => `${i+1}) ${t.title}`).join('\n') : "Verificar requisitos.",
     riesgos: app.language === "Inglés" ? "Requiere redacción sólida en inglés." : "Verificar elegibilidad.",
-    tip_experto: (app.score||0) >= 4 ? "Score alto — priorizar." : "Score moderado — evaluar costo-beneficio.",
+    tip_experto: (app.score||0) >= 70 ? "Score alto — priorizar." : "Score moderado — evaluar costo-beneficio.",
     score: app.score || 0,
     entidad_recomendada: app.entity || "Por definir",
   };
@@ -174,9 +174,9 @@ function BriefingPanel({ app, onClose }) {
       <div onClick={e => e.stopPropagation()} style={{ background: "#0f172a", borderRadius: 14, border: "1px solid #1e293b", padding: 20, width: "min(480px,95vw)", maxHeight: "90vh", overflow: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
           <div><div style={{ fontSize: 18, fontWeight: 700, color: "#f1f5f9" }}>📄 Briefing</div><div style={{ fontSize: 14, color: "#3b82f6", fontWeight: 600 }}>{app.funder}</div></div>
-          <div style={{ background: b.score>=4?"#052e16":"#1a1a0a", borderRadius: 8, padding: "6px 12px", border: `1px solid ${b.score>=4?'#166534':'#854d0e'}` }}>
+          <div style={{ background: b.score>=70?"#052e16":"#1a1a0a", borderRadius: 8, padding: "6px 12px", border: `1px solid ${b.score>=70?'#166534':'#854d0e'}` }}>
             <div style={{ fontSize: 9, color: "#64748b" }}>Score</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: b.score>=4?"#4ade80":"#eab308" }}>{b.score.toFixed(2)}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: b.score>=70?"#4ade80":"#eab308" }}>{b.score}%</div>
           </div>
         </div>
         <div style={ss}><div style={ls}>¿Quién es este funder?</div><div style={ts}>{b.funder_desc}</div></div>
@@ -198,7 +198,7 @@ function BriefingPanel({ app, onClose }) {
   );
 }
 
-function AppCard({ app, tasksDone, onToggleTask, onChangeStatus, onChangeEntity }) {
+function AppCard({ app, tasksDone, onToggleTask, onChangeStatus, onChangeEntity, onRevert }) {
   const [exp, setExp] = useState(false);
   const [showSt, setShowSt] = useState(false);
   const [showEnt, setShowEnt] = useState(false);
@@ -233,7 +233,7 @@ function AppCard({ app, tasksDone, onToggleTask, onChangeStatus, onChangeEntity 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
           <div style={{ background: "#1e293b", borderRadius: 7, padding: "5px 10px" }}><div style={{ fontSize: 9, color: "#64748b" }}>Monto</div><div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>{app.amount}</div></div>
           <div style={{ background: "#1e293b", borderRadius: 7, padding: "5px 10px" }}><div style={{ fontSize: 9, color: "#64748b" }}>Deadline</div><div style={{ fontSize: 14, fontWeight: 700, color: dl!==null?(dl<=14?"#ef4444":dl<=30?"#f97316":"#22c55e"):"#22c55e" }}>{dl!==null?`${dl} días`:"Rolling"}</div></div>
-          <div style={{ background: (app.score||0)>=4?"#052e16":"#1a1a0a", borderRadius: 7, padding: "5px 10px", border: `1px solid ${(app.score||0)>=4?'#166534':'#854d0e'}` }}><div style={{ fontSize: 9, color: "#64748b" }}>Score</div><div style={{ fontSize: 14, fontWeight: 700, color: (app.score||0)>=4?"#4ade80":"#eab308" }}>{(app.score||0).toFixed(2)}</div></div>
+          <div style={{ background: (app.score||0)>=70?"#052e16":"#1a1a0a", borderRadius: 7, padding: "5px 10px", border: `1px solid ${(app.score||0)>=70?'#166534':'#854d0e'}` }}><div style={{ fontSize: 9, color: "#64748b" }}>Score</div><div style={{ fontSize: 14, fontWeight: 700, color: (app.score||0)>=70?"#4ade80":"#eab308" }}>{(app.score||0)}%</div></div>
         </div>
         <WeightedBar tasks={app.tasks} done={tasksDone} />
         <div style={{ padding: "7px 10px", background: "#1e293b", borderRadius: 7, fontSize: 12, color: "#93c5fd", marginTop: 6 }}>→ {app.next_step}</div>
@@ -242,6 +242,7 @@ function AppCard({ app, tasksDone, onToggleTask, onChangeStatus, onChangeEntity 
           <button onClick={()=>setShowBriefing(true)} style={{ padding: "5px 9px", borderRadius: 7, background: "#1e3a5f", color: "#93c5fd", fontSize: 11, fontWeight: 600, border: "1px solid #2563eb33", cursor: "pointer" }}>📄 Briefing</button>
           <LB href={app.url_apply} label="Aplicar" color="#1e3a5f" />
           <LB href={app.url_funder} label="Funder" color="#1e293b" />
+          {app.status === "Preseleccionada" && <button onClick={e=>{e.stopPropagation();onRevert(app);}} style={{ padding: "5px 9px", borderRadius: 7, background: "#1e293b", color: "#f97316", fontSize: 11, border: "1px solid #f9741633", cursor: "pointer" }}>↩ Devolver</button>}
           <button onClick={e=>{e.stopPropagation();onChangeStatus("Archivada");}} style={{ padding: "5px 9px", borderRadius: 7, background: "#1e293b", color: "#ef4444", fontSize: 11, border: "1px solid #ef444433", cursor: "pointer" }}>🗄 Archivar</button>
         </div>
         {showBriefing && <BriefingPanel app={app} onClose={()=>setShowBriefing(false)} />}
@@ -403,7 +404,7 @@ export default function App() {
             try { det = JSON.parse(a.nota_revision || "{}"); } catch(e) { det = {}; }
             
             const funder = det.funder || a.proyecto_bh || "Sin nombre";
-            const score = det.relevancia ? det.relevancia / 25 : 0; // 0-100 → 0-4 scale
+            const score = det.relevancia || 0; // keep as 0-100 percentage
             const idioma = det.idioma || "Por verificar";
             const urlApply = det.url || a.enlace_propuesta || null;
             const monto = det.monto_num || a.monto_solicitado;
@@ -500,7 +501,7 @@ export default function App() {
           amount: monto2 ? `USD ${Number(monto2).toLocaleString()}` : (det2.monto_original || "Por definir"),
           amountNum: monto2 || 0,
           priority: "URGENTE", deadline: a.fecha_limite || det2.deadline,
-          language: det2.idioma || "Por verificar", score: det2.relevancia ? det2.relevancia / 25 : 0,
+          language: det2.idioma || "Por verificar", score: det2.relevancia || 0,
           verified: TODAY, next_step: a.proxima_accion || "Verificar", status: a.estado_aplicacion || "Preseleccionada",
           entity: a.entidad_aplicante || det2.entidad || "Por definir",
           url_apply: det2.url || a.enlace_propuesta || null,
@@ -519,6 +520,20 @@ export default function App() {
       await sbPatch("oportunidades_detectadas", item.id, { estado: "Descartada" });
       setDetected(prev => prev.filter(d => d.id !== item.id));
     } catch (e) { console.log("Discard error:", e); }
+  };
+
+  const revertToDetected = async (app) => {
+    try {
+      // 1. Archive the application
+      await sbPatch("aplicaciones", app.id, { estado_aplicacion: "Archivada" });
+      setApps(prev => prev.map(a => a.id === app.id ? {...a, status: "Archivada"} : a));
+      // 2. Find and revert the detected opportunity
+      const det = await sbGet("oportunidades_detectadas", `titulo=eq.${encodeURIComponent(app.project)}`);
+      if (det.length > 0) {
+        await sbPatch("oportunidades_detectadas", det[0].id, { estado: "Por verificar" });
+        setDetected(prev => [...prev, det[0]]);
+      }
+    } catch (e) { console.log("Revert error:", e); }
   };
 
   const total = kpis.servicios_eco + kpis.grants_int + kpis.proyectos_nac + kpis.donaciones;
@@ -602,7 +617,7 @@ export default function App() {
               <div style={{ fontSize: 28, marginBottom: 6 }}>📭</div>
               <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin aplicaciones activas</div>
               <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>Aprueba oportunidades detectadas para empezar.</div>
-            </div> : apps.filter(a => a.status !== "Archivada").map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[apps.indexOf(a)]||[]} onToggleTask={j=>toggleTask(apps.indexOf(a),j)} onChangeStatus={st=>changeSt(apps.indexOf(a),st)} onChangeEntity={ent=>changeEnt(apps.indexOf(a),ent)} />)}
+            </div> : apps.filter(a => a.status !== "Archivada").map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[apps.indexOf(a)]||[]} onToggleTask={j=>toggleTask(apps.indexOf(a),j)} onChangeStatus={st=>changeSt(apps.indexOf(a),st)} onChangeEntity={ent=>changeEnt(apps.indexOf(a),ent)} onRevert={revertToDetected} />)}
           </div>
         </>}
 
@@ -611,7 +626,7 @@ export default function App() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {apps.length === 0 ? <div style={{ background: "#0f172a", borderRadius: 12, border: "1px solid #1e293b", padding: 20, textAlign: "center" }}>
               <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin datos</div>
-            </div> : apps.map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[i]||[]} onToggleTask={j=>toggleTask(i,j)} onChangeStatus={st=>changeSt(i,st)} onChangeEntity={ent=>changeEnt(i,ent)} />)}
+            </div> : apps.map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[i]||[]} onToggleTask={j=>toggleTask(i,j)} onChangeStatus={st=>changeSt(i,st)} onChangeEntity={ent=>changeEnt(i,ent)} onRevert={revertToDetected} />)}
           </div>
         </>}
 
