@@ -380,7 +380,7 @@ export default function App() {
     async function load() {
       setLoading(true);
       try {
-        const dbApps = await sbGet("aplicaciones", "select=*");
+        const dbApps = await sbGet("aplicaciones", "select=*&estado_aplicacion=neq.Archivada");
         const dbTasks = await sbGet("tareas", "select=*");
         const dbScoring = await sbGet("scoring", "select=*");
         const dbOpp = await sbGet("oportunidades", "select=*");
@@ -617,16 +617,16 @@ export default function App() {
               <div style={{ fontSize: 28, marginBottom: 6 }}>📭</div>
               <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin aplicaciones activas</div>
               <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>Aprueba oportunidades detectadas para empezar.</div>
-            </div> : apps.filter(a => a.status !== "Archivada").map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[apps.indexOf(a)]||[]} onToggleTask={j=>toggleTask(apps.indexOf(a),j)} onChangeStatus={st=>changeSt(apps.indexOf(a),st)} onChangeEntity={ent=>changeEnt(apps.indexOf(a),ent)} onRevert={revertToDetected} />)}
+            </div> : apps.filter(a => a.status !== "Archivada").map((a) => <AppCard key={a.id} app={a} tasksDone={tasksDone[apps.findIndex(x=>x.id===a.id)]||[]} onToggleTask={j=>toggleTask(apps.findIndex(x=>x.id===a.id),j)} onChangeStatus={st=>changeSt(apps.findIndex(x=>x.id===a.id),st)} onChangeEntity={ent=>changeEnt(apps.findIndex(x=>x.id===a.id),ent)} onRevert={revertToDetected} />)}
           </div>
         </>}
 
         {tab === "apps" && <>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Oportunidades ({apps.length})</div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Oportunidades ({apps.filter(a=>a.status!=="Archivada").length})</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {apps.length === 0 ? <div style={{ background: "#0f172a", borderRadius: 12, border: "1px solid #1e293b", padding: 20, textAlign: "center" }}>
+            {apps.filter(a=>a.status!=="Archivada").length === 0 ? <div style={{ background: "#0f172a", borderRadius: 12, border: "1px solid #1e293b", padding: 20, textAlign: "center" }}>
               <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin datos</div>
-            </div> : apps.map((a,i) => <AppCard key={a.id} app={a} tasksDone={tasksDone[i]||[]} onToggleTask={j=>toggleTask(i,j)} onChangeStatus={st=>changeSt(i,st)} onChangeEntity={ent=>changeEnt(i,ent)} onRevert={revertToDetected} />)}
+            </div> : apps.filter(a=>a.status!=="Archivada").map((a) => <AppCard key={a.id} app={a} tasksDone={tasksDone[apps.findIndex(x=>x.id===a.id)]||[]} onToggleTask={j=>toggleTask(apps.findIndex(x=>x.id===a.id),j)} onChangeStatus={st=>changeSt(apps.findIndex(x=>x.id===a.id),st)} onChangeEntity={ent=>changeEnt(apps.findIndex(x=>x.id===a.id),ent)} onRevert={revertToDetected} />)}
           </div>
         </>}
 
@@ -652,7 +652,7 @@ export default function App() {
                 <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin aplicaciones archivadas</div>
               </div>
             : apps.filter(a=>a.status==="Archivada").map((a,i) => {
-                const ai = apps.indexOf(a);
+                const ai = apps.findIndex(x=>x.id===a.id);
                 return <div key={a.id} style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, padding: 12, marginBottom: 8, opacity: 0.7 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
