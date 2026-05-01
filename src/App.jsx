@@ -342,17 +342,22 @@ export default function App() {
             }));
             const opp = (dbOpp || []).find(o => o.id === a.oportunidad_id) || {};
             const scr = (dbScoring || []).find(s => s.oportunidad_id === a.oportunidad_id) || {};
-            // Extract funder name from nota_revision if available
             const funderMatch = (a.nota_revision || "").match(/Funder: ([^.]+)\./);
             const funderName = funderMatch ? funderMatch[1].trim() : (a.proyecto_bh || "Sin nombre");
+            const relevanciaMatch = (a.nota_revision || "").match(/Relevancia: (\d+)%/);
+            const scoreVal = relevanciaMatch ? Number(relevanciaMatch[1]) / 25 : 0; // Convert 0-100 to 0-4 scale
+            const idiomaMatch = (a.nota_revision || "").match(/Idioma: ([^.]+)\./);
+            const idiomaVal = idiomaMatch ? idiomaMatch[1].trim() : "Por verificar";
+            const urlMatch = (a.nota_revision || "").match(/URL: ([^\s.]+)/);
+            const urlVal = urlMatch && urlMatch[1] !== "Sin" ? urlMatch[1] : null;
             return {
               id: a.id, funder: funderName,
               project: a.proyecto_bh || "", 
               amount: a.monto_solicitado ? `USD ${Number(a.monto_solicitado).toLocaleString()}` : "Por definir",
               amountNum: a.monto_solicitado || 0, priority: "URGENTE", deadline: a.fecha_limite,
-              language: "Por verificar", score: scr.score || 0,
+              language: idiomaVal, score: scoreVal,
               verified: TODAY, next_step: a.proxima_accion || "Verificar", status: a.estado_aplicacion || "Preseleccionada",
-              entity: a.entidad_aplicante || "Por definir", url_apply: a.enlace_propuesta,
+              entity: a.entidad_aplicante || "Por definir", url_apply: a.enlace_propuesta || urlVal,
               url_funder: null, url_info: a.enlace_loi,
               tooltip: a.nota_revision || "Verificar en sitio del funder.",
               hoursEst: a.horas_estimadas_prep || 24, area: "Conservación",
@@ -475,8 +480,9 @@ export default function App() {
           <div style={{ display: "flex", gap: 2, overflow: "auto" }}>
             {[
               {id:"dash",l:"Dashboard"},
-              {id:"apps",l:`Aplicaciones (${apps.length})`},
+              {id:"apps",l:`Aplicaciones (${apps.filter(a=>a.status!=="Archivada").length})`},
               {id:"detected",l:`Detectadas${detected.length>0?` (${detected.length})`:""}`},
+              {id:"archived",l:`Archivadas${apps.filter(a=>a.status==="Archivada").length>0?` (${apps.filter(a=>a.status==="Archivada").length})`:""}`},
               {id:"fin",l:"Financiero"},
             ].map(t =>
               <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding: "6px 12px", borderRadius: 7, border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", background: tab===t.id?"#3b82f6":"transparent", color: tab===t.id?"#fff":"#64748b", position: "relative" }}>
@@ -550,6 +556,29 @@ export default function App() {
           ) : (
             <div>{detected.map(d => <DetectedCard key={d.id} item={d} onApprove={approveDetected} onDiscard={discardDetected} />)}</div>
           )}
+        </>}
+
+        {tab === "archived" && <>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>🗄 Aplicaciones Archivadas ({apps.filter(a=>a.status==="Archivada").length})</div>
+          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 12 }}>Aplicaciones que descartaste o no aplicaste. Puedes restaurarlas en cualquier momento.</div>
+          {apps.filter(a=>a.status==="Archivada").length === 0
+            ? <div style={{ background: "#0f172a", borderRadius: 12, border: "1px solid #1e293b", padding: 20, textAlign: "center" }}>
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin aplicaciones archivadas</div>
+              </div>
+            : apps.filter(a=>a.status==="Archivada").map((a,i) => {
+                const ai = apps.indexOf(a);
+                return <div key={a.id} style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, padding: 12, marginBottom: 8, opacity: 0.7 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#64748b" }}>{a.funder}</div>
+                      <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{a.project}</div>
+                      <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{a.amount} · {a.entity}</div>
+                    </div>
+                    <button onClick={() => changeSt(ai, "Preseleccionada")} style={{ background: "#1e3a5f", color: "#60a5fa", border: "1px solid #334155", borderRadius: 6, padding: "6px 12px", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>↩ Restaurar</button>
+                  </div>
+                </div>;
+              })
+          }
         </>}
 
         {tab === "fin" && <>
