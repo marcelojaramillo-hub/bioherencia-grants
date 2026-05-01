@@ -51,7 +51,7 @@ export default async function handler(req, res) {
       proyecto_bh: opp.titulo || "Sin título",
       entidad_aplicante: opp.entidad_sugerida || "Por definir",
       estado_aplicacion: "Preseleccionada",
-      monto_solicitado: opp.monto_estimado || null,
+      monto_solicitado: opp.monto_estimado ? parseFloat(String(opp.monto_estimado).replace(/[^0-9.]/g, '')) || null : null,
       moneda_sol: "USD",
       fecha_limite: opp.deadline || null,
       proxima_accion: `Revisar convocatoria: ${opp.titulo}`,
