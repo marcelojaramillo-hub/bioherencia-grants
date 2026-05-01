@@ -342,15 +342,15 @@ export default function App() {
             const opp = (dbOpp || []).find(o => o.id === a.oportunidad_id) || {};
             const scr = (dbScoring || []).find(s => s.oportunidad_id === a.oportunidad_id) || {};
             return {
-              id: a.id, funder: a.funder || "Sin nombre",
-              project: a.proyecto || "", amount: a.monto || "Por definir",
-              amountNum: a.monto_usd || 0, priority: a.prioridad || "URGENTE", deadline: a.deadline,
-              language: a.idioma || "Por verificar", score: scr.score || 0,
-              verified: TODAY, next_step: a.estado || "Verificar", status: a.estado || "Preseleccionada",
-              entity: a.entidad || "Por definir", url_apply: a.url_aplicar,
-              url_funder: a.url_funder, url_info: a.url_info,
-              tooltip: a.notas || "Verificar en sitio del funder.",
-              hoursEst: a.horas_est || 24, area: a.area || "Conservación",
+              id: a.id, funder: opp.nombre_programa || a.proyecto_bh || "Sin nombre",
+              project: a.proyecto_bh || "", amount: a.monto_solicitado ? `${a.moneda_sol||"USD"} ${a.monto_solicitado}` : "Por definir",
+              amountNum: a.monto_esperado_usd || 0, priority: "URGENTE", deadline: a.fecha_limite,
+              language: "Por verificar", score: scr.score || 0,
+              verified: TODAY, next_step: a.proxima_accion || "Verificar", status: a.estado_aplicacion || "Preseleccionada",
+              entity: a.entidad_aplicante || "Por definir", url_apply: a.enlace_propuesta,
+              url_funder: null, url_info: a.enlace_loi,
+              tooltip: a.nota_revision || "Verificar en sitio del funder.",
+              hoursEst: a.horas_estimadas_prep || 24, area: "Conservación",
               tasks: appTasks.length > 0 ? appTasks : [{ id: "default", title: "Evaluar elegibilidad", due: "", weight: 2 }]
             };
           });
@@ -388,12 +388,12 @@ export default function App() {
 
   const changeSt = (ai, st) => {
     const n = [...apps]; n[ai] = { ...n[ai], status: st }; setApps(n);
-    if (n[ai].id && dbStatus === "live") sbPatch("aplicaciones", n[ai].id, { estado: st });
+    if (n[ai].id && dbStatus === "live") sbPatch("aplicaciones", n[ai].id, { estado_aplicacion: st });
   };
 
   const changeEnt = (ai, ent) => {
     const n = [...apps]; n[ai] = { ...n[ai], entity: ent }; setApps(n);
-    if (n[ai].id && dbStatus === "live") sbPatch("aplicaciones", n[ai].id, { entidad: ent });
+    if (n[ai].id && dbStatus === "live") sbPatch("aplicaciones", n[ai].id, { entidad_aplicante: ent });
   };
 
   const approveDetected = async (item) => {
@@ -414,14 +414,15 @@ export default function App() {
           isGate: (t.titulo || "").includes("⚑") || false
         }));
         return {
-          id: a.id, funder: a.funder || "Sin nombre", project: a.proyecto || "",
-          amount: a.monto || "Por definir", amountNum: a.monto_usd || 0,
-          priority: a.prioridad || "URGENTE", deadline: a.deadline,
-          language: a.idioma || "Por verificar", score: 0,
-          verified: TODAY, next_step: a.estado || "Verificar", status: a.estado || "Preseleccionada",
-          entity: a.entidad || "Por definir", url_apply: a.url_aplicar,
-          url_funder: a.url_funder, url_info: a.url_info,
-          tooltip: a.notas || "", hoursEst: a.horas_est || 24, area: a.area || "Conservación",
+          id: a.id, funder: a.proyecto_bh || "Sin nombre", project: a.proyecto_bh || "",
+          amount: a.monto_solicitado ? `${a.moneda_sol||"USD"} ${a.monto_solicitado}` : "Por definir",
+          amountNum: a.monto_esperado_usd || 0,
+          priority: "URGENTE", deadline: a.fecha_limite,
+          language: "Por verificar", score: 0,
+          verified: TODAY, next_step: a.proxima_accion || "Verificar", status: a.estado_aplicacion || "Preseleccionada",
+          entity: a.entidad_aplicante || "Por definir", url_apply: a.enlace_propuesta,
+          url_funder: null, url_info: a.enlace_loi,
+          tooltip: a.nota_revision || "", hoursEst: a.horas_estimadas_prep || 24, area: "Conservación",
           tasks: appTasks.length > 0 ? appTasks : [{ id: "default", title: "Evaluar elegibilidad", due: "", weight: 2 }]
         };
       });
